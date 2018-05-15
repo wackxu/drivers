@@ -52,7 +52,15 @@ type hostPathVolume struct {
 	VolPath string `json:"volPath"`
 }
 
+type hostPathSnapshot struct {
+	snaName string `json:"snaName"`
+	snaID   string `json:"snaID"`
+	VolID   string `json:"volID"`
+	snaPath string `json:"snaPath"`
+}
+
 var hostPathVolumes map[string]hostPathVolume
+var hostPathVolumeSnapshots map[string]hostPathSnapshot
 
 var (
 	hostPathDriver *hostPath
@@ -61,6 +69,7 @@ var (
 
 func init() {
 	hostPathVolumes = map[string]hostPathVolume{}
+	hostPathVolumeSnapshots = map[string]hostPathSnapshot{}
 }
 
 func GetHostPathDriver() *hostPath {
@@ -93,7 +102,12 @@ func (hp *hostPath) Run(driverName, nodeID, endpoint string) {
 	if hp.driver == nil {
 		glog.Fatalln("Failed to initialize CSI Driver.")
 	}
-	hp.driver.AddControllerServiceCapabilities([]csi.ControllerServiceCapability_RPC_Type{csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME})
+	hp.driver.AddControllerServiceCapabilities(
+		[]csi.ControllerServiceCapability_RPC_Type{
+			csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
+			csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
+			csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS,
+		})
 	hp.driver.AddVolumeCapabilityAccessModes([]csi.VolumeCapability_AccessMode_Mode{csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER})
 
 	// Create GRPC servers

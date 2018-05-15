@@ -28,13 +28,18 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"github.com/kubernetes-csi/drivers/pkg/csi-common"
+	utilexec "k8s.io/utils/exec"
+	"time"
 )
 
 const (
 	deviceID           = "deviceID"
 	provisionRoot      = "/tmp/"
+	snapshotRoot       = "/tmp/"
 	maxStorageCapacity = tib
 )
+
+var _ csi.ControllerServer = &controllerServer{}
 
 type controllerServer struct {
 	*csicommon.DefaultControllerServer
@@ -135,4 +140,73 @@ func (cs *controllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 		}
 	}
 	return &csi.ValidateVolumeCapabilitiesResponse{Supported: true, Message: ""}, nil
+}
+
+func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
+	if err := cs.Driver.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT); err != nil {
+		glog.V(3).Infof("invalid create snapshot req: %v", req)
+		return nil, err
+	}
+
+	// Check arguments
+	if len(req.GetSourceVolumeId()) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "SourceVolumeId missing in request")
+	}
+	if len(req.GetName()) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Name missing in request")
+	}
+
+	volumeID := req.GetSourceVolumeId()
+	hostPathVolume, ok := hostPathVolumes[volumeID]
+	if !ok {
+		return nil, status.Error(codes.Internal, "volumeID is not exist")
+	}
+
+	snapshotID := uuid.NewUUID().String()
+	volPath := hostPathVolume.VolPath
+	file := snapshotRoot + snapshotID + ".tgz"
+	args := []string{"czf", file, "-C", volPath, "."}
+	executor := utilexec.New()
+	out, err := executor.Command("tar", args...).CombinedOutput()
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("failed create snapshot: %v: %s", err, out))
+	}
+
+	glog.V(4).Infof("create volume snapshot %s", file)
+	hostPathSna := hostPathSnapshot{}
+	hostPathSna.snaName = req.GetName()
+	hostPathSna.snaID = snapshotID
+	hostPathSna.VolID = volumeID
+	hostPathSna.snaPath = file
+	hostPathVolumeSnapshots[snapshotID] = hostPathSna
+
+	return &csi.CreateSnapshotResponse{
+		Snapshot: &csi.Snapshot{
+			Id:             snapshotID,
+			SourceVolumeId: volumeID,
+			CreatedAt:      time.Now().UnixNano(),
+			Status: &csi.SnapshotStatus{
+				Type:    csi.SnapshotStatus_READY,
+				Details: fmt.Sprint("Successfully create snapshot"),
+			},
+		},
+	}, nil
+}
+
+func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
+	// Check arguments
+	if len(req.GetSnapshotId()) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Snapshot ID missing in request")
+	}
+
+	if err := cs.Driver.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT); err != nil {
+		glog.V(3).Infof("invalid delete snapshot req: %v", req)
+		return nil, err
+	}
+	snapshotID := req.SnapshotId
+	glog.V(4).Infof("deleting volume %s", snapshotID)
+	path := snapshotRoot + snapshotID + ".tgz"
+	os.RemoveAll(path)
+	delete(hostPathVolumeSnapshots, snapshotID)
+	return &csi.DeleteSnapshotResponse{}, nil
 }

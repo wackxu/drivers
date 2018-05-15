@@ -26,6 +26,8 @@ import (
 	"k8s.io/kubernetes/pkg/volume/util"
 )
 
+var _ csi.ControllerServer = &controllerServer{}
+
 type controllerServer struct {
 	*csicommon.DefaultControllerServer
 }

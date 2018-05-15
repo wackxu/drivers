@@ -44,6 +44,11 @@ func (ns *DefaultNodeServer) NodeGetId(ctx context.Context, req *csi.NodeGetIdRe
 	}, nil
 }
 
+func (ns *DefaultNodeServer) NodeGetInfo(context.Context, *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "")
+}
+
+
 func (ns *DefaultNodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, error) {
 	glog.V(5).Infof("Using default NodeGetCapabilities")
 
