@@ -17,7 +17,7 @@ IMAGE_VERSION = canary
 
 .PHONY: all flexadapter nfs hostpath iscsi cinder clean hostpath-container
 
-all: flexadapter nfs hostpath iscsi cinder
+all: hostpath
 
 test:
 	go test github.com/kubernetes-csi/drivers/pkg/... -cover
