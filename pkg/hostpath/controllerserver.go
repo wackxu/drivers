@@ -163,6 +163,7 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 	}
 
 	snapshotID := uuid.NewUUID().String()
+	createAt := time.Now().UnixNano()
 	volPath := hostPathVolume.VolPath
 	file := snapshotRoot + snapshotID + ".tgz"
 	args := []string{"czf", file, "-C", volPath, "."}
@@ -174,21 +175,24 @@ func (cs *controllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 
 	glog.V(4).Infof("create volume snapshot %s", file)
 	hostPathSna := hostPathSnapshot{}
-	hostPathSna.snaName = req.GetName()
-	hostPathSna.snaID = snapshotID
+	hostPathSna.SnaName = req.GetName()
+	hostPathSna.SnaID = snapshotID
 	hostPathSna.VolID = volumeID
-	hostPathSna.snaPath = file
+	hostPathSna.SnaPath = file
+	hostPathSna.CreateAt = createAt
+	hostPathSna.Status = &csi.SnapshotStatus{
+		Type:    csi.SnapshotStatus_READY,
+		Details: fmt.Sprint("Successfully create snapshot"),
+	}
+
 	hostPathVolumeSnapshots[snapshotID] = hostPathSna
 
 	return &csi.CreateSnapshotResponse{
 		Snapshot: &csi.Snapshot{
-			Id:             snapshotID,
-			SourceVolumeId: volumeID,
-			CreatedAt:      time.Now().UnixNano(),
-			Status: &csi.SnapshotStatus{
-				Type:    csi.SnapshotStatus_READY,
-				Details: fmt.Sprint("Successfully create snapshot"),
-			},
+			Id:             hostPathSna.SnaID,
+			SourceVolumeId: hostPathSna.VolID,
+			CreatedAt:      hostPathSna.CreateAt,
+			Status:         hostPathSna.Status,
 		},
 	}, nil
 }
@@ -209,4 +213,34 @@ func (cs *controllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteS
 	os.RemoveAll(path)
 	delete(hostPathVolumeSnapshots, snapshotID)
 	return &csi.DeleteSnapshotResponse{}, nil
+}
+
+func (cs *controllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
+	// Check arguments
+	if len(req.GetSnapshotId()) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Snapshot ID missing in request")
+	}
+
+	if err := cs.Driver.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS); err != nil {
+		glog.V(3).Infof("invalid list snapshot req: %v", req)
+		return nil, err
+	}
+
+	snapshotID := req.SnapshotId
+	snapshot := hostPathVolumeSnapshots[snapshotID]
+
+	rsp := &csi.ListSnapshotsResponse{
+		Entries: []*csi.ListSnapshotsResponse_Entry{
+			{
+				Snapshot: &csi.Snapshot{
+					Id:             snapshot.SnaID,
+					SourceVolumeId: snapshot.VolID,
+					CreatedAt:      snapshot.CreateAt,
+					Status:         snapshot.Status,
+				},
+			},
+		},
+	}
+
+	return rsp, nil
 }

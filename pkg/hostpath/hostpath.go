@@ -53,10 +53,12 @@ type hostPathVolume struct {
 }
 
 type hostPathSnapshot struct {
-	snaName string `json:"snaName"`
-	snaID   string `json:"snaID"`
-	VolID   string `json:"volID"`
-	snaPath string `json:"snaPath"`
+	SnaName  string                  `json:"snaName"`
+	SnaID    string                  `json:"snaID"`
+	VolID    string                  `json:"volID"`
+	SnaPath  string                  `json:"snaPath"`
+	CreateAt int64                   `json:"createAt"`
+	Status   *csi.SnapshotStatus `json:"status"`
 }
 
 var hostPathVolumes map[string]hostPathVolume
